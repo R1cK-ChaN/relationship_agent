@@ -1,12 +1,21 @@
 # Relationship Navigator
 
-An open-source Microsoft Excel Add-in for modeling, visualizing, and analyzing professional relationship networks. Map out the political landscape of your organization with an interactive force-directed graph, real-time Excel sync, and AI-powered event analysis — all from within Excel.
+An open-source tool for modeling, visualizing, and analyzing professional relationship networks. Available as a **standalone web app** (zero install — just upload your `.xlsx`) or as a **Microsoft Excel Add-in** with real-time sync. Features an interactive force-directed graph, multi-axis filtering, and AI-powered event analysis. All data stays client-side.
 
 ## Why This Exists
 
 Navigating complex interpersonal dynamics in large organizations — especially family-run or highly political environments — is a significant challenge. Critical knowledge about who holds real influence, who is aligned with whom, and who poses a risk often exists only as unwritten institutional memory.
 
 Relationship Navigator gives you a private, structured, intelligent system for mapping and analyzing these dynamics. Your data stays in your Excel file. AI analysis happens on-demand using your own API key.
+
+## Two Ways to Use
+
+| Mode | Best For | Setup |
+|------|----------|-------|
+| **Web App** | Quick exploration, sharing with non-technical users | `npm run start:webapp` → open browser → upload `.xlsx` |
+| **Excel Add-in** | Power users who want real-time Excel sync | Sideload manifest into Excel (see below) |
+
+Both modes share the same visualization, filtering, and AI analysis features. The web app stores settings in `localStorage`; the add-in stores them in the workbook's document settings.
 
 ## Features
 
@@ -17,10 +26,15 @@ Relationship Navigator gives you a private, structured, intelligent system for m
 - **Risk indicators** — high-risk individuals get a prominent red border
 - **Click to inspect** — click any node or edge to open a details panel
 
-### Real-Time Excel Sync
+### Real-Time Excel Sync (Add-in Mode)
 - Edit data in Excel, see the graph update within ~750ms
 - `onChanged` event handlers on all three tables with 500ms debounce
 - Bi-directional: AI suggestions can write results back into Excel cells
+
+### File Upload (Web App Mode)
+- Drag-and-drop or click to upload any `.xlsx` file with People/Relationships/Events sheets
+- All parsing happens in-browser via SheetJS — nothing leaves your machine
+- AI suggestions update in-memory data; re-upload to start fresh
 
 ### AI-Powered Event Analysis
 - Send event descriptions to OpenAI, Anthropic, or Google AI for analysis
@@ -85,20 +99,21 @@ The add-in uses three Excel tables as its data store:
 | Layer | Technology |
 |-------|-----------|
 | Add-in Framework | Office.js (Office Add-ins) |
+| Web App Data Layer | SheetJS (xlsx) — in-browser `.xlsx` parsing |
 | Frontend | React 18 + TypeScript 5 |
 | Graph Visualization | D3.js v7 (d3-force, d3-zoom, d3-drag) |
 | UI Components | Fluent UI React v9 (@fluentui/react-components) |
-| Build | Webpack 5 + Babel |
+| Build | Webpack 5 + Babel (conditional multi-target) |
 | AI Integration | Direct fetch() to OpenAI / Anthropic / Google APIs |
 
 ## Project Structure
 
 ```
-relationship_agent/
+relationship_navigator/
 ├── manifest.xml                          # Office Add-in manifest (ribbon, permissions)
 ├── package.json
 ├── tsconfig.json
-├── webpack.config.js
+├── webpack.config.js                     # Multi-target build (addin / webapp / all)
 ├── babel.config.json
 ├── assets/                               # Add-in icons (16/32/64/80px)
 └── src/
@@ -108,23 +123,30 @@ relationship_agent/
     │   ├── debounce.ts                   # Generic debounce (500ms default)
     │   └── colors.ts                     # Department/sentiment/risk color mappings
     ├── services/
-    │   ├── DataService.ts                # Office.js read/write bridge, change handlers, settings
+    │   ├── DataService.ts                # Office.js read/write bridge (add-in mode)
+    │   ├── WebDataService.ts             # SheetJS in-browser parser (web app mode)
     │   ├── LLMService.ts                 # Multi-provider AI client (OpenAI/Anthropic/Google)
     │   └── RiskService.ts                # Risk score calculation engine
     ├── commands/
     │   ├── commands.ts                   # Ribbon command handler
     │   └── commands.html                 # Commands HTML shell
-    └── taskpane/
-        ├── index.tsx                     # React entry point (Office.onReady + FluentProvider)
-        ├── taskpane.html                 # HTML container (loads Office.js CDN)
-        ├── taskpane.css                  # Global reset styles
+    ├── taskpane/                          # Excel Add-in entry
+    │   ├── index.tsx                     # React entry point (Office.onReady + FluentProvider)
+    │   ├── taskpane.html                 # HTML container (loads Office.js CDN)
+    │   ├── taskpane.css                  # Global reset styles (shared)
+    │   └── components/
+    │       ├── App.tsx                   # Add-in root: state, tabs, data loading, Excel sync
+    │       ├── GraphView.tsx             # D3 force-directed graph (SVG)
+    │       ├── DetailsPanel.tsx          # Slide-over panel: person/relationship details + AI
+    │       ├── EventsView.tsx            # Chronological event list with filters
+    │       ├── SettingsView.tsx          # LLM provider/model/API key configuration
+    │       └── FilterPanel.tsx           # Graph filter toolbar (department/risk/type/sentiment)
+    └── webapp/                            # Standalone Web App entry
+        ├── index.tsx                     # React entry point (direct mount, no Office.js)
+        ├── webapp.html                   # HTML container (no Office.js script)
         └── components/
-            ├── App.tsx                   # Root component: state, tabs, data loading, sync
-            ├── GraphView.tsx             # D3 force-directed graph (SVG)
-            ├── DetailsPanel.tsx          # Slide-over panel: person/relationship details + AI
-            ├── EventsView.tsx            # Chronological event list with filters
-            ├── SettingsView.tsx          # LLM provider/model/API key configuration
-            └── FilterPanel.tsx           # Graph filter toolbar (department/risk/type/sentiment)
+            ├── WebApp.tsx                # Web root: file upload state, in-memory risk calc
+            └── FileUpload.tsx            # Drag-and-drop .xlsx upload with validation
 ```
 
 ## Getting Started
@@ -132,40 +154,57 @@ relationship_agent/
 ### Prerequisites
 
 - **Node.js** 18+ and npm
-- **Microsoft Excel** (Desktop on Windows/macOS, or Excel on the Web)
+- **Microsoft Excel** (Desktop on Windows/macOS, or Excel on the Web) — only needed for add-in mode
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/R1cK-ChaN/relationship_agent.git
-cd relationship_agent
+git clone https://github.com/R1cK-ChaN/relationship_navigator.git
+cd relationship_navigator
 
 # Install dependencies
 npm install
-
-# Build for production
-npm run build
-
-# Or start the dev server (HTTPS on localhost:3000)
-npm run dev-server
 ```
 
-### Sideloading the Add-in
+### Web App (Recommended for Quick Start)
 
-#### Excel on the Web
+```bash
+# Start the web app dev server (HTTP on localhost:3001)
+npm run start:webapp
+
+# Or build for production
+npm run build:webapp
+# Output: dist/index.html + dist/webapp.bundle.js
+```
+
+Open `http://localhost:3001` in your browser, upload an `.xlsx` file with People/Relationships/Events sheets, and you're done.
+
+### Excel Add-in
+
+```bash
+# Start the add-in dev server (HTTPS on localhost:3000)
+npm start
+
+# Or build for production
+npm run build
+```
+
+#### Sideloading the Add-in
+
+##### Excel on the Web
 1. Open Excel at [office.com](https://www.office.com)
 2. Open a workbook (or create a new one)
 3. Go to **Home** > **Add-ins** > **More Add-ins** > **Upload My Add-in**
 4. Upload `dist/manifest.xml` (after running `npm run build`) or point to `https://localhost:3000/manifest.xml` (when using dev server)
 
-#### Excel Desktop (Windows)
+##### Excel Desktop (Windows)
 1. Run `npm run dev-server`
 2. Open Excel
 3. Go to **File** > **Options** > **Trust Center** > **Trust Center Settings** > **Trusted Add-in Catalogs**
 4. Add a network share containing the manifest, or use the [Office Add-in DevTools](https://learn.microsoft.com/en-us/office/dev/add-ins/testing/sideload-office-add-ins-for-testing) for sideloading
 
-#### Excel Desktop (macOS)
+##### Excel Desktop (macOS)
 1. Run `npm run dev-server`
 2. Copy `manifest.xml` to `~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/`
 3. Restart Excel
@@ -187,7 +226,7 @@ npm run dev-server
 3. Choose a model from the dropdown
 4. Enter your API key and click **Save Settings**
 
-Your API key is stored in the workbook's document settings (persists when saved). It is only used when you explicitly click "Analyze with AI" on an event.
+Your API key is stored in the workbook's document settings (add-in mode) or `localStorage` (web app mode). It is only used when you explicitly click "Analyze with AI" on an event.
 
 ### Supported Models
 
@@ -203,6 +242,7 @@ Your API key is stored in the workbook's document settings (persists when saved)
 
 ### Architecture
 
+**Excel Add-in Mode:**
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Microsoft Excel                         │
@@ -223,12 +263,37 @@ Your API key is stored in the workbook's document settings (persists when saved)
                                     └──────────────────┘
 ```
 
+**Web App Mode:**
+```
+┌──────────────┐    ┌──────────────────────────────────────────┐
+│  .xlsx File  │    │            Browser (React)                │
+│              │    │                                           │
+│  People      │    │  FileUpload → WebDataService (SheetJS)   │
+│  Relationships├───►│           ↓                               │
+│  Events      │    │  Graph   Events   Settings   [Re-upload] │
+│              │    │  (D3.js) (List)   (Form)                 │
+└──────────────┘    │           │ fetch()                       │
+                    └───────────┼───────────────────────────────┘
+                                ▼
+                      ┌──────────────────┐
+                      │  Cloud LLM API   │
+                      │  (Your API Key)  │
+                      └──────────────────┘
+```
+
 ### Data Flow
 
+**Add-in mode:**
 1. **Startup**: Task pane opens → reads all 3 tables via Office.js → parses into typed objects → renders graph
 2. **Real-time sync**: User edits Excel → `table.onChanged` fires → 500ms debounce → full reload → React re-render → D3 updates
 3. **AI analysis**: User clicks "Analyze with AI" → event description sent to LLM → structured JSON response → displayed in panel → optional write-back to Excel
 4. **Risk calculation**: After each data load, severity of negative-impact events is summed per person → risk levels updated in Excel where changed
+
+**Web app mode:**
+1. **Startup**: User uploads `.xlsx` → SheetJS parses sheets → typed objects stored in memory → renders graph
+2. **No real-time sync**: Data is loaded once per upload. Click "Re-upload File" to load new data.
+3. **AI analysis**: Same as add-in mode, but "Apply Suggestions" updates in-memory arrays instead of Excel cells
+4. **Risk calculation**: Computed in-memory using the same algorithm; no write-back to the file
 
 ### Key Design Decisions
 
@@ -239,17 +304,23 @@ Your API key is stored in the workbook's document settings (persists when saved)
 ## Development
 
 ```bash
-# Start dev server with hot reload
-npm run dev-server
+# Start web app dev server (http://localhost:3001)
+npm run start:webapp
 
-# Production build
-npm run build
+# Start add-in dev server (https://localhost:3000)
+npm start
+
+# Production builds
+npm run build            # Add-in only
+npm run build:webapp     # Web app only
 
 # Lint
 npm run lint
 ```
 
-The dev server runs on `https://localhost:3000` with HTTPS (required by Office Add-ins).
+The add-in dev server runs on `https://localhost:3000` (HTTPS required by Office Add-ins). The web app dev server runs on `http://localhost:3001` (no HTTPS needed).
+
+The build system uses `--env target=` to select which entry points to compile: `addin` (default), `webapp`, or `all`.
 
 ### Pre-commit Hook
 
@@ -257,10 +328,10 @@ A pre-commit hook runs `npm run build` before each commit to catch compilation e
 
 ## Privacy & Security
 
-- **Data stays local**: All people, relationships, and event data remain in your Excel file. Nothing is uploaded anywhere.
+- **Data stays local**: All people, relationships, and event data remain in your Excel file (add-in) or browser memory (web app). Nothing is uploaded anywhere.
 - **AI is opt-in**: The AI feature only activates when you explicitly click "Analyze with AI" on a specific event.
 - **Minimal data sent**: Only the event `Description` text is sent to the AI provider. Names, IDs, and relationship data are never transmitted.
-- **Your key, your control**: API keys are stored in the workbook's document settings — not in any cloud service or global config.
+- **Your key, your control**: API keys are stored in the workbook's document settings (add-in) or browser `localStorage` (web app) — not in any cloud service.
 - **Consent required**: A privacy disclosure dialog must be acknowledged before the first AI call.
 
 ## License
